@@ -1,6 +1,6 @@
 cabal-version:   3.0
 name:            sideband
-version:         0.1.0.0
+version:         0.1.1.0
 synopsis:        Telegram side channel for unattended coding agents
 description:
   One bot, one forum group, many agents. @tg@ lets a coding agent send
