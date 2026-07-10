@@ -23,18 +23,30 @@ tg inbox        # instructions the operator sent meanwhile
 
 ## Install
 
+**macOS (Apple Silicon)** — Homebrew:
+
 ```bash
-nix run github:paolino/sideband -- status
-# or into the profile:
-nix profile install github:paolino/sideband
+brew tap lambdasistemi/tap
+brew install sideband
 ```
+
+**Any platform with Nix**:
+
+```bash
+nix run github:lambdasistemi/sideband -- status
+# or into the profile:
+nix profile install github:lambdasistemi/sideband
+```
+
+**Linux** — grab the `AppImage` / `.deb` / `.rpm` from the
+[latest release](https://github.com/lambdasistemi/sideband/releases/latest).
 
 The hub daemon runs per machine. Either `tg daemon start`, or on
 NixOS:
 
 ```nix
 {
-  inputs.sideband.url = "github:paolino/sideband";
+  inputs.sideband.url = "github:lambdasistemi/sideband";
   # ...
   imports = [ sideband.nixosModules.default ];
   services.sideband = {
