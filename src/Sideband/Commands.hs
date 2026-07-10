@@ -24,7 +24,7 @@ module Sideband.Commands
 -- therefore refuses to run while the daemon is up.
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (forever, unless, when)
+import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -40,8 +40,12 @@ import Sideband.Spool
     ( appendSent
     , consumeInbox
     , daemonPid
+    , ensureLog
     , inboxDir
+    , logPath
+    , logSize
     , notifyMarker
+    , readLogFrom
     , readTopic
     , registerTag
     , waitReply
@@ -68,7 +72,14 @@ import System.Directory
     )
 import System.Exit (ExitCode (ExitFailure, ExitSuccess), exitWith)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr)
+import System.IO
+    ( BufferMode (LineBuffering)
+    , hFlush
+    , hPutStrLn
+    , hSetBuffering
+    , stderr
+    , stdout
+    )
 import System.Process (readProcessWithExitCode)
 
 -- | @tg ask@ exits with this code when the operator does not answer.
@@ -170,21 +181,38 @@ cmdInbox cfg = do
     msgs <- consumeInbox cfg tag
     mapM_ TIO.putStrLn msgs
 
-{- | @tg watch@ — block forever, printing each new message for this tag as it
-arrives. This is the watcher: run it once (Claude wraps it in a persistent
-Monitor; Codex/Gemini run it as a background job) and every message the user
-sends surfaces within a couple of seconds — no polling discipline required.
-Each line is prefixed so it is unmistakable in a log or notification.
+{- | @tg watch@ — tail this tag's append-only inbox log, printing each new
+message as it is appended. Agent-independent: it is just a @tail -F@ of a
+plain file, so any agent can equally use @tail -f@ on the log directly
+(printed by 'logPath'). Because the log is append-only, reading never removes
+anything — a slow, idle, or restarted agent never loses a message.
 -}
 cmdWatch :: Config -> IO ()
 cmdWatch cfg = do
+    -- line-buffer so each message flushes immediately even when stdout is a
+    -- pipe/file (a Monitor or a background `tg watch > log`)
+    hSetBuffering stdout LineBuffering
     tag <- tagName
     registerTag cfg tag
-    TIO.putStrLn $ "tg watch: listening on topic for " <> tag
-    forever $ do
-        msgs <- consumeInbox cfg tag
-        mapM_ (\m -> TIO.putStrLn $ "\128276 TELEGRAM from user: " <> m) msgs
-        threadDelay 2_000_000
+    let path = logPath cfg tag
+    ensureLog cfg tag
+    TIO.putStrLn $ "tg watch: tailing " <> T.pack path
+    -- start at the current end, like `tail -F`
+    start <- logSize path
+    loop path start
+  where
+    loop path off = do
+        size <- logSize path
+        off' <-
+            if size > off
+                then do
+                    chunk <- readLogFrom path off
+                    TIO.putStr chunk
+                    hFlush stdout
+                    pure size
+                else pure off
+        threadDelay 1_000_000
+        loop path off'
 
 -- | @tg open@ — create (or reopen) this tag's forum topic.
 cmdOpen :: Config -> IO ()
