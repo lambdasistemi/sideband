@@ -26,7 +26,8 @@ tg send "PR #12 opened, CI green"       # fire-and-forget notification
 tg send --md "*bold*"                   # Markdown, falls back to plain
 tg ask "Merge now or wait?"             # blocks; prints the reply; exit 42 on timeout
 tg ask --timeout 1800 "…"               # default 600s
-tg inbox                                 # print + consume routed messages for this tag
+tg watch                                 # BLOCK and stream each new message (the watcher)
+tg inbox                                 # one-shot: print + consume pending messages
 tg open / tg close                       # create-or-reopen / close this tag's forum topic
 tg on / tg off                           # hook marker + topic lifecycle in one step
 tg daemon run|start|stop|status          # the hub (systemd runs `tg daemon run`)
@@ -42,23 +43,32 @@ tg setup                                 # one-time chat-id capture (daemon must
 2. `tg on` at the start of unattended work: registers the tag, opens
    the agent's own forum topic (its channel on the operator's phone),
    and arms the `.tg-notify` hook marker (git-excluded automatically).
-3. **Arm a continuous inbox watcher — the most important step.** The
-   inbox is pull-based and this is a priority channel, so checking
-   `tg inbox` only "on reporting ticks" is not enough: an idle or
-   blocked agent then goes deaf and silently ignores the operator —
-   the number-one failure of this channel. The moment you go on the
-   channel, start a watcher that surfaces new messages continuously,
-   for the whole time you are on it, **including while idle, blocked,
-   or waiting**:
-   - Claude Code: a persistent `Monitor` on
-     `~/.local/state/sideband/tags/<tag>/inbox/` (each new `*.msg`
-     file becomes a notification).
-   - Codex / Gemini / other: a background loop
-     `( while true; do tg inbox >> ~/.tg-inbox.log; sleep 90; done ) &`,
-     and also run `tg inbox` at the start and end of every turn.
-   The contract: new operator messages reach your reasoning within
-   ~2 minutes, always. Acknowledge each with a `send` and act on it;
-   an unread message is a dropped ball.
+3. **Start the watcher — `tg watch`. This is not optional; it *is* being
+   on the channel.** `tg watch` blocks and prints every message the
+   operator sends to you, as it arrives. Run it once, in the background,
+   and leave it running for your whole lifetime. Without it you are deaf:
+   the inbox is pull-based, so an agent that merely `tg on`s and then
+   works will silently ignore the operator — the number-one failure of
+   this channel.
+
+   Run it the way your runtime surfaces background output:
+
+   - **Claude Code**: wrap it in a persistent `Monitor` so each message
+     becomes a notification in your loop:
+     ```
+     Monitor(command: 'tg watch', persistent: true)
+     ```
+   - **Codex / Gemini / other**: launch it as a background job that
+     streams into your view:
+     ```
+     tg watch &
+     ```
+
+   The contract: every operator message reaches your reasoning within
+   seconds, even while idle, blocked, or waiting. Acknowledge each with a
+   `send` and act on it. An unread message is a dropped ball. (`tg inbox`
+   remains for a one-shot manual drain, but it is not a substitute for
+   `tg watch`.)
 4. Send events the operator would act on, and nothing else: milestone
    done, PR opened, CI failed, blocker hit, decision taken on their
    behalf. If it would not change what they do next, do not send it.
