@@ -20,6 +20,7 @@ import Sideband.Commands
     , cmdSend
     , cmdSetup
     , cmdStatus
+    , cmdWatch
     )
 import Sideband.Config (Config, loadConfig)
 import Sideband.Daemon
@@ -33,6 +34,7 @@ data Command
     = Send Bool [Text]
     | Ask Int [Text]
     | Inbox
+    | Watch
     | Open
     | Close
     | Setup
@@ -96,6 +98,12 @@ parser =
                 "inbox"
                 (info (pure Inbox) (progDesc "Print pending messages"))
             <> command
+                "watch"
+                ( info
+                    (pure Watch)
+                    (progDesc "Block and print each new message as it arrives")
+                )
+            <> command
                 "open"
                 (info (pure Open) (progDesc "Open this tag's topic"))
             <> command
@@ -153,6 +161,7 @@ dispatch cfg = \case
     Send md ws -> cmdSend cfg md =<< joined ws
     Ask seconds ws -> cmdAsk cfg seconds =<< joined ws
     Inbox -> cmdInbox cfg
+    Watch -> cmdWatch cfg
     Open -> cmdOpen cfg
     Close -> cmdClose cfg
     Setup -> cmdSetup cfg

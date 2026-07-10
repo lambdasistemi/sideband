@@ -2,6 +2,7 @@ module Sideband.Commands
     ( cmdSend
     , cmdAsk
     , cmdInbox
+    , cmdWatch
     , cmdOpen
     , cmdClose
     , cmdSetup
@@ -22,7 +23,8 @@ module Sideband.Commands
 -- @setup@, which polls directly for the operator's first message and
 -- therefore refuses to run while the daemon is up.
 
-import Control.Monad (unless, when)
+import Control.Concurrent (threadDelay)
+import Control.Monad (forever, unless, when)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -167,6 +169,22 @@ cmdInbox cfg = do
     tag <- tagName
     msgs <- consumeInbox cfg tag
     mapM_ TIO.putStrLn msgs
+
+{- | @tg watch@ — block forever, printing each new message for this tag as it
+arrives. This is the watcher: run it once (Claude wraps it in a persistent
+Monitor; Codex/Gemini run it as a background job) and every message the user
+sends surfaces within a couple of seconds — no polling discipline required.
+Each line is prefixed so it is unmistakable in a log or notification.
+-}
+cmdWatch :: Config -> IO ()
+cmdWatch cfg = do
+    tag <- tagName
+    registerTag cfg tag
+    TIO.putStrLn $ "tg watch: listening on topic for " <> tag
+    forever $ do
+        msgs <- consumeInbox cfg tag
+        mapM_ (\m -> TIO.putStrLn $ "\128276 TELEGRAM from user: " <> m) msgs
+        threadDelay 2_000_000
 
 -- | @tg open@ — create (or reopen) this tag's forum topic.
 cmdOpen :: Config -> IO ()
