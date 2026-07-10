@@ -4,6 +4,16 @@ All notable changes to `sideband` are documented here.
 
 ## Unreleased
 
+## [0.1.2.0](https://github.com/lambdasistemi/sideband/compare/v0.1.1.0...v0.1.2.0) (2026-07-10)
+
+### Features
+
+* react with eyes emoji as a read receipt (#7) ([77dfa8f](https://github.com/lambdasistemi/sideband/commit/77dfa8f6ca380c009ad876a2e1173feec63b120e))
+* echo voice-note transcription back to the user (#9) ([f05fb28](https://github.com/lambdasistemi/sideband/commit/f05fb28b868b57f32dacc2ae428b2dd2da084622))
+* tg watch — a blocking inbox watcher, one command (#13) ([70ad145](https://github.com/lambdasistemi/sideband/commit/70ad145bf243193808bb4bf2dfdcff2d6da75f8c))
+* append-only inbox log — tg watch tails it, never consumes (#14) ([b70e160](https://github.com/lambdasistemi/sideband/commit/b70e160c978e7378404f04cd31d0b38b429a863e))
+* macOS Homebrew release (aarch64-darwin) (#12) ([a1de6e1](https://github.com/lambdasistemi/sideband/commit/a1de6e1693e9259956fd8b7803834c147a77d607))
+
 ## [0.1.1.0](https://github.com/lambdasistemi/sideband/releases/tag/v0.1.1.0) (2026-07-10)
 
 ### Features
