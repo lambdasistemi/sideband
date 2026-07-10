@@ -10,6 +10,14 @@
     nix profile install github:lambdasistemi/sideband
     ```
 
+=== "macOS (Homebrew, Apple Silicon)"
+
+    ```bash
+    brew tap lambdasistemi/tap
+    brew install sideband
+    tg --help
+    ```
+
 === "Linux (AppImage / DEB / RPM)"
 
     Grab an artifact from the

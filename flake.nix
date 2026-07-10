@@ -13,10 +13,11 @@
     nixpkgs.follows = "haskellNix/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     dev-assets-mkdocs.url = "github:paolino/dev-assets?dir=mkdocs";
+    dev-assets.url = "github:paolino/dev-assets";
     bundlers.url = "github:NixOS/bundlers";
   };
   outputs = inputs@{ self, nixpkgs, flake-utils, haskellNix, dev-assets-mkdocs
-    , bundlers, ... }:
+    , dev-assets, bundlers, ... }:
     flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (system:
       let
         pkgs = import nixpkgs {
@@ -55,12 +56,40 @@
           linux-artifact-smoke =
             import ./nix/linux-artifact-smoke.nix { inherit pkgs system; };
         };
-      in {
-        packages = project.packages // linuxReleasePackages // {
-          default = project.packages.main;
-          inherit site;
-          docs = site;
+
+        mkDarwinHomebrewBundle =
+          dev-assets.lib.mkDarwinHomebrewBundle { inherit pkgs; };
+        mkSidebandDarwinBundle = args: mkDarwinHomebrewBundle ({
+          pname = "sideband";
+          version = packageVersion;
+          owner = "lambdasistemi";
+          desc = "Telegram side channel for unattended coding agents";
+          homepage = "https://github.com/lambdasistemi/sideband";
+          formulaClass = "Sideband";
+          executables = { tg = project.packages.main; };
+          executableNames = [ "tg" ];
+          formulaTest = ''system "#{bin}/tg", "--help"'';
+          smokeCommands = [ "tg --help >/dev/null" ];
+        } // args);
+        darwinReleasePackages = pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+          darwin-release-artifacts = mkSidebandDarwinBundle { };
+          darwin-dev-homebrew-artifacts = mkSidebandDarwinBundle {
+            artifactVersion = devArtifactVersion;
+            releaseTag = "dev-homebrew";
+            formulaName = "sideband-dev";
+            formulaClass = "SidebandDev";
+            formulaVersion = devArtifactVersion;
+            formulaExtraLines =
+              "\n  conflicts_with \"sideband\", because: \"both install tg\"";
+          };
         };
+      in {
+        packages =
+          project.packages // linuxReleasePackages // darwinReleasePackages // {
+            default = project.packages.main;
+            inherit site;
+            docs = site;
+          };
         inherit (project) devShells;
       }) // {
         nixosModules = rec {

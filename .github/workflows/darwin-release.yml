@@ -1,0 +1,126 @@
+name: Darwin Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/darwin-release.yml"
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Release mode"
+        type: choice
+        options: ["release", "dev-homebrew"]
+        default: "release"
+      tag:
+        description: "Existing tag to build for release mode, e.g. v0.1.1.0"
+        required: false
+        type: string
+      publish:
+        description: "Release mode only: upload to the GitHub release and update Homebrew"
+        type: choice
+        options: ["no", "yes"]
+        default: "no"
+      update_tap:
+        description: "Dev Homebrew mode only: update lambdasistemi/homebrew-tap"
+        type: choice
+        options: ["yes", "no"]
+        default: "yes"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: >-
+    darwin-release-${{
+      github.ref_type == 'tag' && github.ref_name
+      || inputs.tag
+      || github.ref
+    }}-${{ inputs.mode || github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build aarch64-darwin artifacts
+    runs-on: macos-14
+    env:
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+      MODE: >-
+        ${{
+          github.event_name == 'pull_request' && 'dev-homebrew'
+          || inputs.mode
+          || 'release'
+        }}
+      PUBLISH: >-
+        ${{
+          github.event_name == 'push'
+          || (inputs.mode != 'dev-homebrew' && inputs.publish == 'yes')
+        }}
+      UPDATE_TAP: ${{ inputs.update_tap || 'yes' }}
+      DEV_TAG: dev-homebrew
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: >-
+            ${{
+              github.ref_type == 'tag' && github.ref_name
+              || inputs.tag
+              || github.ref
+            }}
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            extra-substituters = https://cache.iog.io https://paolino.cachix.org
+            extra-trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= paolino.cachix.org-1:ecmgO3CXdgSWA2cHlm4srknd/cLFMLmK3i3NrzeDFaE=
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: paolino
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Mint a scoped tap token
+        id: tap-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          owner: lambdasistemi
+          repositories: homebrew-tap
+
+      - name: Build, smoke-test, and optionally publish Darwin Homebrew artifacts
+        uses: paolino/dev-assets/darwin-homebrew-release@9ac7c6280196ca7cea154ec78f091e2b6481abec
+        with:
+          mode: ${{ env.MODE }}
+          tag: ${{ env.TAG }}
+          publish: ${{ env.PUBLISH }}
+          update-tap: ${{ env.UPDATE_TAP }}
+          dev-tag: ${{ env.DEV_TAG }}
+          release-package: darwin-release-artifacts
+          dev-package: darwin-dev-homebrew-artifacts
+          release-formula: sideband.rb
+          dev-formula: sideband-dev.rb
+          release-artifact-name: darwin-release-bundle
+          dev-artifact-name: darwin-dev-homebrew-artifacts
+          tarball-pattern: sideband-*-aarch64-darwin.tar.gz
+          installed-commands: tg
+          cleanup-formulae: sideband sideband-dev
+          tap-name: lambdasistemi/tap
+          tap-repository: lambdasistemi/homebrew-tap
+          github-token: ${{ github.token }}
+          tap-token: ${{ steps.tap-token.outputs.token }}
+          release-check-command: 'scripts/release/check-version-consistency "$TAG"'
+          release-notes-command: 'scripts/release/extract-notes "$TAG"'
+          release-title: sideband ${{ env.TAG }}
+          dev-release-title: sideband dev Homebrew
+          tarball-smoke-script: |
+            tg --help
+          brew-smoke-script: |
+            tg --help
+            otool -L "$(which tg)"
