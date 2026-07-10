@@ -46,6 +46,7 @@ import Sideband.Telegram
     , downloadVoice
     , getUpdates
     , newBot
+    , replyMessage
     , setMessageReaction
     , transcribe
     )
@@ -175,7 +176,7 @@ processBatch cfg bot chat updates offset0 = go offset0 updates
 
     -- text, or the transcription of a voice note
     textOf IncomingMsg{msgText = Just t} = pure (Just t)
-    textOf IncomingMsg{msgVoice = Just fileId} =
+    textOf m@IncomingMsg{msgVoice = Just fileId} =
         case whisperUrl cfg of
             Nothing -> do
                 putStrLn "voice note but WHISPER_URL unset — dropped"
@@ -195,6 +196,16 @@ processBatch cfg bot chat updates offset0 = go offset0 updates
                                 pure Nothing
                             Right txt -> do
                                 putStrLn "voice note transcribed"
+                                -- Echo the transcription back under the
+                                -- user's audio so they see what was heard
+                                -- (Telegram can't replace the audio itself).
+                                void $
+                                    replyMessage
+                                        bot
+                                        (T.pack (show (msgChat m)))
+                                        (msgThread m)
+                                        (msgId m)
+                                        ("\127908 " <> txt)
                                 pure $ Just $ "\127908 " <> txt
     textOf _ = pure Nothing
 

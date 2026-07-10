@@ -6,6 +6,7 @@ module Sideband.Telegram
     , getUpdates
     , sendMessage
     , getMe
+    , replyMessage
     , setMessageReaction
     , downloadVoice
     , createForumTopic
@@ -198,6 +199,32 @@ sendMessage bot chat thread parseMode text = do
                     (\t -> [("message_thread_id", T.pack $ show t)])
                     thread
                 <> maybe [] (\p -> [("parse_mode", p)]) parseMode
+    pure $ r >>= parseEither (withObject "Message" (.: "message_id"))
+
+{- | Reply to a specific message. Used to echo a voice note's transcription
+back under the user's audio so they can see what the daemon heard.
+-}
+replyMessage
+    :: Bot
+    -> Text
+    -- ^ chat id
+    -> Maybe Integer
+    -- ^ forum topic thread id
+    -> Integer
+    -- ^ message id to reply to
+    -> Text
+    -> IO (Either String Integer)
+replyMessage bot chat thread replyTo text = do
+    r <-
+        apiCall bot "sendMessage" $
+            [ ("chat_id", chat)
+            , ("text", text)
+            , ("reply_to_message_id", T.pack (show replyTo))
+            ]
+                <> maybe
+                    []
+                    (\t -> [("message_thread_id", T.pack $ show t)])
+                    thread
     pure $ r >>= parseEither (withObject "Message" (.: "message_id"))
 
 -- | The bot's username, to greet the operator during setup.
