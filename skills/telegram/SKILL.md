@@ -42,9 +42,23 @@ tg setup                                 # one-time chat-id capture (daemon must
 2. `tg on` at the start of unattended work: registers the tag, opens
    the agent's own forum topic (its channel on the operator's phone),
    and arms the `.tg-notify` hook marker (git-excluded automatically).
-3. On every reporting tick run `tg inbox` — anything it prints is an
-   instruction or question from the operator: acknowledge with a
-   `send` and act on it. An unchecked inbox is a dead letterbox.
+3. **Arm a continuous inbox watcher — the most important step.** The
+   inbox is pull-based and this is a priority channel, so checking
+   `tg inbox` only "on reporting ticks" is not enough: an idle or
+   blocked agent then goes deaf and silently ignores the operator —
+   the number-one failure of this channel. The moment you go on the
+   channel, start a watcher that surfaces new messages continuously,
+   for the whole time you are on it, **including while idle, blocked,
+   or waiting**:
+   - Claude Code: a persistent `Monitor` on
+     `~/.local/state/sideband/tags/<tag>/inbox/` (each new `*.msg`
+     file becomes a notification).
+   - Codex / Gemini / other: a background loop
+     `( while true; do tg inbox >> ~/.tg-inbox.log; sleep 90; done ) &`,
+     and also run `tg inbox` at the start and end of every turn.
+   The contract: new operator messages reach your reasoning within
+   ~2 minutes, always. Acknowledge each with a `send` and act on it;
+   an unread message is a dropped ball.
 4. Send events the operator would act on, and nothing else: milestone
    done, PR opened, CI failed, blocker hit, decision taken on their
    behalf. If it would not change what they do next, do not send it.
