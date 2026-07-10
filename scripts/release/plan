@@ -342,4 +342,7 @@ else
     --body-file "$body_file"
 fi
 
-gh workflow run ci.yml --repo "$owner_repo" --ref "$release_branch"
+# Belt-and-braces CI dispatch on the release branch. With an App-authored PR
+# the pull_request CI runs automatically, so this is redundant; it also needs
+# actions:write, which the release App token lacks — keep it non-fatal.
+gh workflow run ci.yml --repo "$owner_repo" --ref "$release_branch" || true

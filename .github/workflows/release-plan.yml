@@ -36,4 +36,10 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Plan or tag Cabal release
+        # Author the release PR with the App token (a real actor) so its
+        # pull_request CI runs normally. A PR opened via the default
+        # GITHUB_TOKEN is treated as a bot and its workflows are withheld as
+        # action_required, leaving the PR permanently BLOCKED with no checks.
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: scripts/release/plan
