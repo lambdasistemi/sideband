@@ -28,7 +28,8 @@ table =
 msg :: IncomingMsg
 msg =
     IncomingMsg
-        { msgChat = 111
+        { msgId = 1
+        , msgChat = 111
         , msgChatType = "private"
         , msgChatTitle = Nothing
         , msgText = Just "hello"
