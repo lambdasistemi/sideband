@@ -1,63 +1,187 @@
-name: Release
+name: Linux Release
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch: {}
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/release.yml"
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Release mode"
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - dev-linux
+      tag:
+        description: "Existing release tag, for example v0.1.1.0"
+        required: false
+        type: string
+      publish:
+        description: "Upload release assets when mode=release"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "no"
+          - "yes"
 
 permissions:
   contents: write
-  pull-requests: write
+
+concurrency:
+  group: linux-release-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name || inputs.tag || inputs.mode }}
+  cancel-in-progress: false
 
 jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-    steps:
-      # App token so the release PR is authored by a real actor and its CI
-      # runs (GITHUB_TOKEN-authored bot PRs get no checks and stay BLOCKED).
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ vars.CI_APP_ID }}
-          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-          owner: lambdasistemi
-          repositories: sideband
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-
-  publish-linux:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+  linux-bundles:
+    name: Build Linux release bundles
     runs-on: nixos
+    env:
+      DEV_TAG: dev-linux
+      MODE: ${{ github.event_name == 'pull_request' && 'dev-linux' || inputs.mode || 'release' }}
+      PUBLISH: ${{ github.event_name == 'push' && 'yes' || inputs.publish || 'no' }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || github.ref }}
+
       - uses: cachix/cachix-action@v17
         with:
           name: paolino
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Build the tg binary
-        run: nix build --quiet .#default -o result-tg
-      - name: Stage the release tarball
+
+      - name: Validate release mode
         run: |
           set -euo pipefail
-          tag="${{ needs.release-please.outputs.tag_name }}"
-          stage="sideband-${tag}-x86_64-linux"
-          mkdir -p "$stage/bin"
-          cp -L result-tg/bin/tg "$stage/bin/tg"
-          chmod +x "$stage/bin/tg"
-          "$stage/bin/tg" --help >/dev/null
-          tar -czf "${stage}.tar.gz" "$stage"
-      - name: Upload to the release
+          case "$MODE" in
+            release)
+              if [ -z "${TAG:-}" ]; then
+                echo "release mode requires a v* tag from a tag push or the tag input" >&2
+                exit 1
+              fi
+              scripts/release/check-version-consistency "$TAG"
+              ;;
+            dev-linux)
+              ;;
+            *)
+              echo "unsupported release mode: $MODE" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Build and smoke-test Linux artifacts
+        id: linux-artifacts
+        run: |
+          set -euo pipefail
+
+          case "$MODE" in
+            release)
+              artifact_version="$(scripts/release/get-cabal-version)"
+              package_output="linux-release-artifacts"
+              artifact_name="linux-release-bundles"
+              ;;
+            dev-linux)
+              artifact_version="$(scripts/release/get-cabal-version)-$(git rev-parse --short=7 HEAD)"
+              package_output="linux-dev-release-artifacts"
+              artifact_name="linux-dev-release-bundles"
+              ;;
+            *)
+              echo "unsupported release mode: $MODE" >&2
+              exit 1
+              ;;
+          esac
+
+          nix build --quiet ".#$package_output"
+          artifact_dir="$(readlink -f result)"
+          nix run --quiet .#linux-artifact-smoke -- \
+            --artifacts-dir "$artifact_dir" \
+            --artifact-version "$artifact_version"
+
+          ls -lh "$artifact_dir"
+
+          {
+            echo "artifact_name=$artifact_name"
+            echo "artifact_version=$artifact_version"
+            echo "artifact_dir=$artifact_dir"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.linux-artifacts.outputs.artifact_name }}
+          path: ${{ steps.linux-artifacts.outputs.artifact_dir }}/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Create release and upload artifacts
+        if: env.MODE == 'release' && env.PUBLISH == 'yes'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="${{ needs.release-please.outputs.tag_name }}"
-          gh release upload "$tag" \
-            "sideband-${tag}-x86_64-linux.tar.gz" --clobber
+          set -euo pipefail
+          notes="$(mktemp)"
+          scripts/release/extract-notes "$TAG" > "$notes"
+          gh=(nix --quiet shell nixpkgs#gh -c gh)
+          "${gh[@]}" release view "$TAG" >/dev/null 2>&1 \
+            || "${gh[@]}" release create "$TAG" \
+              --title "sideband $TAG" \
+              --notes-file "$notes" \
+            || "${gh[@]}" release view "$TAG" >/dev/null
+          "${gh[@]}" release upload "$TAG" "${{ steps.linux-artifacts.outputs.artifact_dir }}"/* --clobber
+
+      - name: Publish dev Linux release assets
+        if: env.MODE == 'dev-linux' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="$(mktemp)"
+          {
+            echo "Development Linux bundles for $GITHUB_SHA"
+            echo
+            echo "Built from $GITHUB_REF."
+          } > "$notes"
+
+          git tag -f "$DEV_TAG" HEAD
+          git push --force origin "refs/tags/$DEV_TAG"
+
+          gh=(nix --quiet shell nixpkgs#gh -c gh)
+          "${gh[@]}" release view "$DEV_TAG" >/dev/null 2>&1 \
+            || "${gh[@]}" release create "$DEV_TAG" \
+              --title "sideband dev Linux bundles" \
+              --notes-file "$notes" \
+              --prerelease
+          "${gh[@]}" release edit "$DEV_TAG" \
+            --title "sideband dev Linux bundles" \
+            --notes-file "$notes" \
+            --prerelease
+          "${gh[@]}" release upload "$DEV_TAG" "${{ steps.linux-artifacts.outputs.artifact_dir }}"/* --clobber
+
+      - name: Smoke-test dev Linux release assets
+        if: env.MODE == 'dev-linux' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_version="${{ steps.linux-artifacts.outputs.artifact_version }}"
+          download_dir="$(mktemp -d)"
+          gh=(nix --quiet shell nixpkgs#gh -c gh)
+          "${gh[@]}" release download "$DEV_TAG" \
+            --dir "$download_dir" \
+            --pattern "sideband-$artifact_version-x86_64-linux.*" \
+            --clobber
+          ls -lh "$download_dir"
+          nix run --quiet .#linux-artifact-smoke -- \
+            --artifacts-dir "$download_dir" \
+            --artifact-version "$artifact_version"

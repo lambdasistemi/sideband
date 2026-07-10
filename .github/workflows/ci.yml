@@ -88,22 +88,13 @@ jobs:
       - name: Run hlint
         run: nix --quiet develop -c just hlint
 
-  # Drift guard: the .cabal version (PVP) must equal the release-please
-  # manifest version (semver) with a .0 patch appended.
+  # Release contract: .cabal is the version source of truth, no release-please
+  # files, and on a release branch/tag the CHANGELOG has the matching section.
   version-check:
     name: CI version
     needs: build-gate
     runs-on: nixos
     steps:
       - uses: actions/checkout@v6
-      - name: Cabal version matches manifest
-        run: |
-          set -euo pipefail
-          manifest=$(nix --quiet shell nixpkgs#jq -c jq -r '."."' .release-please-manifest.json)
-          cabal=$(grep -E "^version:" sideband.cabal | sed -E 's/version:[[:space:]]+//')
-          expected="${manifest}.0"
-          if [ "$cabal" != "$expected" ]; then
-            echo "cabal version $cabal != manifest-derived $expected" >&2
-            exit 1
-          fi
-          echo "ok: cabal $cabal matches manifest $manifest"
+      - name: Check version consistency
+        run: scripts/release/check-version-consistency

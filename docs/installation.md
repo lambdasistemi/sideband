@@ -2,11 +2,26 @@
 
 ## The binary
 
-```bash
-nix run github:lambdasistemi/sideband -- status
-# or into the profile:
-nix profile install github:lambdasistemi/sideband
-```
+=== "Nix"
+
+    ```bash
+    nix run github:lambdasistemi/sideband -- status
+    # or into the profile:
+    nix profile install github:lambdasistemi/sideband
+    ```
+
+=== "Linux (AppImage / DEB / RPM)"
+
+    Grab an artifact from the
+    [releases page](https://github.com/lambdasistemi/sideband/releases/latest):
+
+    ```bash
+    curl -L https://github.com/lambdasistemi/sideband/releases/latest/download/sideband.AppImage -o tg
+    chmod +x ./tg
+    ./tg --help
+    ```
+
+    Or install the `.deb` / `.rpm` from the same release.
 
 ## The hub daemon
 
@@ -17,20 +32,38 @@ messages from the spool. Run it per machine:
 tg daemon start
 ```
 
-Or, on NixOS, enable the module:
+Or run it as a managed service.
 
-```nix
-{
-  inputs.sideband.url = "github:lambdasistemi/sideband";
-  # ...
-  imports = [ sideband.nixosModules.default ];
-  services.sideband = {
-    enable = true;
-    user = "youruser";                     # same user the agents run as
-    environmentFile = "/home/youruser/.config/sideband/env";
-  };
-}
-```
+=== "home-manager (systemd user service)"
+
+    Runs the hub under your user, as the same user the agents run as:
+
+    ```nix
+    {
+      inputs.sideband.url = "github:lambdasistemi/sideband";
+      # ...
+      imports = [ sideband.homeManagerModules.default ];
+      services.sideband = {
+        enable = true;
+        environmentFile = "%h/.config/sideband/env";
+      };
+    }
+    ```
+
+=== "NixOS (system service)"
+
+    ```nix
+    {
+      inputs.sideband.url = "github:lambdasistemi/sideband";
+      # ...
+      imports = [ sideband.nixosModules.default ];
+      services.sideband = {
+        enable = true;
+        user = "youruser";                     # same user the agents run as
+        environmentFile = "/home/youruser/.config/sideband/env";
+      };
+    }
+    ```
 
 ## Configuration
 
