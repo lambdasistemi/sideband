@@ -5,16 +5,105 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Build gate — populates the shared nix store so downstream jobs are instant.
   build-gate:
     name: Build Gate
     runs-on: nixos
     steps:
       - uses: actions/checkout@v6
-      - name: Stub CI
-        run: echo "CI stub — will be replaced by real CI"
+      - uses: cachix/cachix-action@v17
+        with:
+          name: paolino
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Build all derivations
+        run: >-
+          nix build --quiet
+          .#default
+          .#unit-tests
+          .#devShells.x86_64-linux.default.inputDerivation
+
+  build:
+    name: CI build
+    needs: build-gate
+    runs-on: nixos
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/cachix-action@v17
+        with:
+          name: paolino
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Build
+        run: nix build --quiet
+      - name: Test
+        # .#unit-tests is a haskell.nix check derivation: building it runs
+        # the suite (it is not a runnable executable, so `nix run` fails).
+        run: nix build .#unit-tests --quiet --no-link
+
+  # REQUIRED separate gate: packaged builds never enter `nix develop`, so a
+  # broken dev shell (removed nixpkgs attrs, missing pkg-config libs, pinned
+  # tool drift) stays invisible until a real cabal build runs in the shell.
+  dev-shell:
+    name: CI dev-shell
+    needs: build-gate
+    runs-on: nixos
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/cachix-action@v17
+        with:
+          name: paolino
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Build inside the dev shell
+        run: nix --quiet develop -c cabal build all -O0
+
+  formatting:
+    name: CI format
+    needs: build-gate
+    runs-on: nixos
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/cachix-action@v17
+        with:
+          name: paolino
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Check formatting
+        run: nix --quiet develop -c just format-check
+
+  hlint:
+    name: CI hlint
+    needs: build-gate
+    runs-on: nixos
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/cachix-action@v17
+        with:
+          name: paolino
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Run hlint
+        run: nix --quiet develop -c just hlint
+
+  # Drift guard: the .cabal version (PVP) must equal the release-please
+  # manifest version (semver) with a .0 patch appended.
+  version-check:
+    name: CI version
+    needs: build-gate
+    runs-on: nixos
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cabal version matches manifest
+        run: |
+          set -euo pipefail
+          manifest=$(nix --quiet shell nixpkgs#jq -c jq -r '."."' .release-please-manifest.json)
+          cabal=$(grep -E "^version:" sideband.cabal | sed -E 's/version:[[:space:]]+//')
+          expected="${manifest}.0"
+          if [ "$cabal" != "$expected" ]; then
+            echo "cabal version $cabal != manifest-derived $expected" >&2
+            exit 1
+          fi
+          echo "ok: cabal $cabal matches manifest $manifest"

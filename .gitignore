@@ -1,0 +1,6 @@
+dist-newstyle/
+result
+result-*
+.tg-notify
+*.hi
+*.o
