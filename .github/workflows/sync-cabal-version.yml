@@ -1,0 +1,35 @@
+name: Sync cabal version
+
+# On a release-please PR, propagate the manifest version (semver) into the
+# .cabal version (PVP, x.y.z -> x.y.z.0) so the drift check in CI passes.
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: startsWith(github.head_ref, 'release-please--')
+    runs-on: nixos
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync .cabal version from manifest
+        run: |
+          set -euo pipefail
+          manifest=$(nix --quiet shell nixpkgs#jq -c jq -r '."."' .release-please-manifest.json)
+          pvp="${manifest}.0"
+          sed -i -E "s/^(version:[[:space:]]+).*/\1${pvp}/" sideband.cabal
+          if git diff --quiet sideband.cabal; then
+            echo "cabal already at ${pvp}"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "chore: sync cabal version to ${pvp}"
+            git push
+          fi
