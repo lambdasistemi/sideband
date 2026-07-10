@@ -21,6 +21,11 @@ it while the operator is away: a way to surface events worth acting on,
 and a way to ask a question and get an answer. sideband is that channel
 — the agent keeps working, the operator intervenes from a phone.
 
+Unlike the approval gateways and orchestration harnesses that *control*
+an agent from the outside, sideband is a **skill the agent chooses to
+use** — agent-initiated, non-intercepting, and model-agnostic (Claude,
+Codex, Gemini). See [Why sideband is different](philosophy.md).
+
 ## Next
 
 - [Installation](installation.md) — install the `tg` binary and run the hub.

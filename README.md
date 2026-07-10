@@ -9,6 +9,12 @@ the inbound direction, routes the operator's replies to per-agent
 inbox spools, and transcribes voice notes through a
 [whisper-server](https://github.com/paolino/whisper-server).
 
+sideband is **not** a harness or an approval gateway. It doesn't
+intercept or control the agent — it's a **skill the agent chooses to
+use** to reach out on its own initiative, and it's model-agnostic
+(Claude, Codex, Gemini). That distinction is the point; see
+[Why sideband is different](docs/philosophy.md).
+
 ```bash
 tg send "PR #12 opened, CI green"
 answer=$(tg ask "Merge now or wait for review?")

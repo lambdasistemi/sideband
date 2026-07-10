@@ -29,6 +29,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Why sideband is different: philosophy.md
   - Installation: installation.md
   - Usage: usage.md
   - Architecture: architecture.md
