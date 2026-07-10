@@ -101,7 +101,7 @@ parser =
                 "watch"
                 ( info
                     (pure Watch)
-                    (progDesc "Block and print each new message as it arrives")
+                    (progDesc "Tail the append-only inbox log for this tag")
                 )
             <> command
                 "open"

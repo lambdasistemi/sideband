@@ -30,7 +30,8 @@ import Sideband.Route
     , routeIncoming
     )
 import Sideband.Spool
-    ( daemonPid
+    ( appendLog
+    , daemonPid
     , deliver
     , knownTags
     , pidFile
@@ -159,18 +160,22 @@ processBatch cfg bot chat updates offset0 = go offset0 updates
                 , rtTags = tags
                 }
 
+    -- every routed message goes to two surfaces: the append-only inbox.log
+    -- (the watch surface — never consumed) and the spool (for ask/inbox).
     dispatch = \case
         ToTag tag text -> do
+            appendLog cfg tag text
             deliver cfg tag text
             TIO.putStrLn $ "routed -> " <> tag
         Broadcast text -> do
             tags <- knownTags cfg
             if null tags
                 then do
+                    appendLog cfg "_unclaimed" text
                     deliver cfg "_unclaimed" text
                     putStrLn "no tags registered -> _unclaimed"
                 else do
-                    mapM_ (\t -> deliver cfg t text) tags
+                    mapM_ (\t -> appendLog cfg t text >> deliver cfg t text) tags
                     putStrLn "broadcast -> all tags"
         Dropped reason -> TIO.putStrLn $ "dropped: " <> reason
 

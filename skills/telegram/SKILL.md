@@ -26,7 +26,7 @@ tg send "PR #12 opened, CI green"       # fire-and-forget notification
 tg send --md "*bold*"                   # Markdown, falls back to plain
 tg ask "Merge now or wait?"             # blocks; prints the reply; exit 42 on timeout
 tg ask --timeout 1800 "…"               # default 600s
-tg watch                                 # BLOCK and stream each new message (the watcher)
+tg watch                                 # tail the append-only inbox log (the watcher)
 tg inbox                                 # one-shot: print + consume pending messages
 tg open / tg close                       # create-or-reopen / close this tag's forum topic
 tg on / tg off                           # hook marker + topic lifecycle in one step
@@ -43,32 +43,32 @@ tg setup                                 # one-time chat-id capture (daemon must
 2. `tg on` at the start of unattended work: registers the tag, opens
    the agent's own forum topic (its channel on the operator's phone),
    and arms the `.tg-notify` hook marker (git-excluded automatically).
-3. **Start the watcher — `tg watch`. This is not optional; it *is* being
-   on the channel.** `tg watch` blocks and prints every message the
-   operator sends to you, as it arrives. Run it once, in the background,
-   and leave it running for your whole lifetime. Without it you are deaf:
-   the inbox is pull-based, so an agent that merely `tg on`s and then
-   works will silently ignore the operator — the number-one failure of
-   this channel.
+3. **Watch your append-only inbox log — this is being on the channel.**
+   The hub appends every message the operator sends you, one line each,
+   to a plain **append-only file**:
+   ```
+   ~/.local/state/sideband/tags/<tag>/inbox.log
+   ```
+   Because it is append-only, reading it never removes anything — a slow,
+   idle, or restarted agent never loses a message, and there is nothing to
+   "eat". `tg watch` is just a `tail -F` of that file; you may equally
+   `tail -f` the file yourself. This is fully agent-independent.
 
-   Run it the way your runtime surfaces background output:
+   Set it up so new lines reach your reasoning, and leave it running for
+   your whole lifetime:
 
-   - **Claude Code**: wrap it in a persistent `Monitor` so each message
+   - **Claude Code**: wrap the tail in a persistent `Monitor` so each line
      becomes a notification in your loop:
      ```
      Monitor(command: 'tg watch', persistent: true)
      ```
-   - **Codex / Gemini / other**: launch it as a background job that
-     streams into your view:
-     ```
-     tg watch &
-     ```
+   - **Codex / Gemini / other**: tail the file into your view, e.g. a
+     background `tg watch &` (or `tail -f …/inbox.log &`), and read it at
+     the start and end of every turn.
 
-   The contract: every operator message reaches your reasoning within
-   seconds, even while idle, blocked, or waiting. Acknowledge each with a
-   `send` and act on it. An unread message is a dropped ball. (`tg inbox`
-   remains for a one-shot manual drain, but it is not a substitute for
-   `tg watch`.)
+   Acknowledge each message with a `send` and act on it. An unread message
+   is a dropped ball. (`tg inbox` is a one-shot manual drain of the spool;
+   it is not the watcher.)
 4. Send events the operator would act on, and nothing else: milestone
    done, PR opened, CI failed, blocker hit, decision taken on their
    behalf. If it would not change what they do next, do not send it.

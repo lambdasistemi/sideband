@@ -4,6 +4,11 @@ module Sideband.Spool
     , deliver
     , consumeInbox
     , waitReply
+    , logPath
+    , appendLog
+    , ensureLog
+    , logSize
+    , readLogFrom
     , appendSent
     , readSent
     , readTopic
@@ -36,10 +41,13 @@ module Sideband.Spool
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (try)
+import Control.Monad (unless)
+import Data.ByteString qualified as BS
 import Data.List (sort)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Sideband.Config (Config (..))
@@ -51,6 +59,13 @@ import System.Directory
     , removeFile
     )
 import System.FilePath (takeExtension, (</>))
+import System.IO
+    ( IOMode (ReadMode)
+    , SeekMode (AbsoluteSeek)
+    , hFileSize
+    , hSeek
+    , withFile
+    )
 import System.Posix.Signals (nullSignal, signalProcess)
 import System.Posix.Types (CPid (..))
 import Text.Read (readMaybe)
@@ -61,6 +76,41 @@ inboxDir cfg tag = tagDir cfg tag </> "inbox"
 
 tagDir :: Config -> Text -> FilePath
 tagDir Config{stateDir} tag = stateDir </> "tags" </> T.unpack tag
+
+{- | The tag's append-only inbox log — the watch surface. Any tool can
+@tail -f@ it; it is never truncated or consumed.
+-}
+logPath :: Config -> Text -> FilePath
+logPath cfg tag = tagDir cfg tag </> "inbox.log"
+
+{- | Append one message as a single line (newlines flattened to spaces so
+@tail -f@ shows one line per message).
+-}
+appendLog :: Config -> Text -> Text -> IO ()
+appendLog cfg tag text = do
+    createDirectoryIfMissing True (tagDir cfg tag)
+    let oneLine = T.map (\c -> if c == '\n' then ' ' else c) text
+    TIO.appendFile (logPath cfg tag) (oneLine <> "\n")
+
+-- | Ensure the tag's log file exists so a watcher can open it immediately.
+ensureLog :: Config -> Text -> IO ()
+ensureLog cfg tag = do
+    createDirectoryIfMissing True (tagDir cfg tag)
+    let p = logPath cfg tag
+    exists <- doesFileExist p
+    unless exists $ TIO.writeFile p ""
+
+-- | Current byte length of the log (0 if absent).
+logSize :: FilePath -> IO Integer
+logSize path = do
+    exists <- doesFileExist path
+    if exists then withFile path ReadMode hFileSize else pure 0
+
+-- | Read the log from a byte offset to the end, decoding leniently.
+readLogFrom :: FilePath -> Integer -> IO Text
+readLogFrom path off = withFile path ReadMode $ \h -> do
+    hSeek h AbsoluteSeek off
+    TE.decodeUtf8Lenient <$> BS.hGetContents h
 
 -- | Make a tag visible to the hub (idempotent).
 registerTag :: Config -> Text -> IO ()
