@@ -6,6 +6,7 @@ module Sideband.Telegram
     , getUpdates
     , sendMessage
     , getMe
+    , setMessageReaction
     , downloadVoice
     , createForumTopic
     , closeForumTopic
@@ -75,7 +76,8 @@ data Incoming = Incoming
 
 -- | The subset of a Telegram message sideband routes on.
 data IncomingMsg = IncomingMsg
-    { msgChat :: Integer
+    { msgId :: Integer
+    , msgChat :: Integer
     , msgChatType :: Text
     , msgChatTitle :: Maybe Text
     , msgText :: Maybe Text
@@ -95,6 +97,7 @@ instance FromJSON Incoming where
         pure Incoming{updateId = uid, message = m}
       where
         parseMsg = withObject "Message" $ \o -> do
+            mid <- o .: "message_id"
             chat <- o .: "chat"
             (cid, ctype, ctitle) <-
                 withObject
@@ -122,7 +125,8 @@ instance FromJSON Incoming where
                     (voice <|> audio)
             pure
                 IncomingMsg
-                    { msgChat = cid
+                    { msgId = mid
+                    , msgChat = cid
                     , msgChatType = ctype
                     , msgChatTitle = ctitle
                     , msgText = text
@@ -201,6 +205,23 @@ getMe :: Bot -> IO (Either String Text)
 getMe bot = do
     r <- apiCall bot "getMe" []
     pure $ r >>= parseEither (withObject "User" (.: "username"))
+
+{- | React to a message with a single emoji — the bot's "read receipt",
+since the Bot API cannot set the native seen-ticks. @chat@ and @messageId@
+identify the message; @emoji@ must be one of Telegram's allowed reactions
+(e.g. @\"\\128064\"@, the eyes). Best-effort: reaction failures are ignored
+by callers.
+-}
+setMessageReaction
+    :: Bot -> Text -> Integer -> Text -> IO (Either String Value)
+setMessageReaction bot chat messageId emoji =
+    apiCall
+        bot
+        "setMessageReaction"
+        [ ("chat_id", chat)
+        , ("message_id", T.pack (show messageId))
+        , ("reaction", "[{\"type\":\"emoji\",\"emoji\":\"" <> emoji <> "\"}]")
+        ]
 
 -- | Resolve a voice note's @file_id@ and download its bytes.
 downloadVoice :: Bot -> Text -> IO (Either String BL.ByteString)

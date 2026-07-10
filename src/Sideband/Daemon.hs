@@ -19,8 +19,9 @@ module Sideband.Daemon
 -- detached instance for machines without a service manager.
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, void, when)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Sideband.Config (Config (..), requireChat)
 import Sideband.Route
@@ -45,6 +46,7 @@ import Sideband.Telegram
     , downloadVoice
     , getUpdates
     , newBot
+    , setMessageReaction
     , transcribe
     )
 import System.Directory (createDirectoryIfMissing, removeFile)
@@ -127,7 +129,20 @@ processBatch cfg bot chat updates offset0 = go offset0 updates
             mText <- textOf msg
             forM_ mText $ \text -> do
                 table <- routingTable
-                dispatch $ routeIncoming table msg text
+                let route = routeIncoming table msg text
+                dispatch route
+                -- Read receipt: the Bot API has no seen-ticks, so react with
+                -- the eyes emoji to every message we actually route. Best
+                -- effort; a failed reaction must not drop the message.
+                case route of
+                    Dropped _ -> pure ()
+                    _ ->
+                        void $
+                            setMessageReaction
+                                bot
+                                (T.pack (show (msgChat msg)))
+                                (msgId msg)
+                                "\128064"
         go offset' rest
 
     routingTable = do
