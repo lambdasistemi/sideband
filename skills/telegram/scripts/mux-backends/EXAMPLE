@@ -1,19 +1,21 @@
-# EXAMPLE mux backend — the contract for supporting a non-tmux multiplexer.
+# EXAMPLE mux backend — annotated skeleton for supporting a non-tmux
+# multiplexer. Read mux-backends/README.md for the full contract; this file is
+# the copy-paste starting point.
 #
 # Copy this file to mux-backends/<yourmux> (e.g. zellij, screen, wezterm),
 # implement the four functions for your multiplexer, then select it with
 #   export SIDEBAND_MUX=<yourmux>
 # before running `go-mobile`. (SIDEBAND_MUX may also be an absolute path to a
-# backend file kept outside this repo.)
+# backend file kept outside this repo.) Verify it with:
+#   SIDEBAND_MUX=<yourmux> ../mux-selftest
 #
 # A "handle" is whatever opaque string your backend uses to address one pane
 # (a pane id, a tab name, a session:window.pane triple). mux passes handles
 # back to you verbatim; only your backend interprets them.
 #
 # Sketches below show the closest zellij / screen commands. They are NOT
-# verified against every version — treat them as a starting point and test
-# `mux self`, `mux spawn ... -- some-cmd`, and `mux inject <h> -- hi` on your
-# setup before relying on the liaison.
+# verified against every version — treat them as a starting point and run
+# mux-selftest on your setup before relying on the liaison.
 
 # Print an opaque handle for the CURRENT pane. Callers store it and later pass
 # it to inject/focus. Must be stable for the pane's lifetime.
