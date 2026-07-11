@@ -1,0 +1,39 @@
+# tmux backend for `mux` (default). Sourced by ../mux; defines the four
+# backend functions. Handles are tmux pane ids (e.g. %42). Requires running
+# inside a tmux server ($TMUX_PANE set).
+
+mux_self() {
+    printf '%s\n' "${TMUX_PANE:?mux: not inside a tmux pane}"
+}
+
+mux_spawn() {
+    # MUX_ENV : array of K=V ; MUX_CMD : command+args ; MUX_FROM : split source
+    local eargs=() kv
+    if [ ${#MUX_ENV[@]} -gt 0 ]; then
+        for kv in "${MUX_ENV[@]}"; do
+            eargs+=(-e "$kv")
+        done
+    fi
+    tmux split-window -v -t "${MUX_FROM:-${TMUX_PANE:?}}" -P -F '#{pane_id}' \
+        ${eargs[@]+"${eargs[@]}"} "${MUX_CMD[@]}"
+}
+
+mux_inject() {
+    local target="$1" text="$2"
+    tmux send-keys -t "$target" Escape
+    sleep 0.4
+    tmux send-keys -t "$target" -l -- "$text"
+    sleep 0.4
+    tmux send-keys -t "$target" Enter
+    # send-keys mid-loop is flaky: if the typed text is still sitting at the
+    # prompt a moment later, the Enter did not register — submit again.
+    sleep 0.5
+    if tmux capture-pane -t "$target" -p 2>/dev/null \
+        | grep -qF -- "${text:0:48}"; then
+        tmux send-keys -t "$target" Enter
+    fi
+}
+
+mux_focus() {
+    tmux select-pane -t "$1" 2>/dev/null || true
+}

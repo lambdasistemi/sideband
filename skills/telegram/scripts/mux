@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Multiplexer adapter for the Telegram liaison.
+#
+# The liaison needs exactly two terminal-multiplexer tricks: spawn a sibling
+# pane for itself, and inject a submitted line into the epic owner's pane to
+# grab its attention. Those are the ONLY places tmux was hard-wired. This
+# adapter hides them behind a small verb set so `go-mobile` and `liaison`
+# never call `tmux` directly — pick a backend with SIDEBAND_MUX (default
+# `tmux`), or drop a new file in mux-backends/ to support zellij, screen,
+# wezterm, or anything else. See mux-backends/EXAMPLE for the contract.
+#
+# Verbs:
+#   mux self
+#       Print an opaque handle for THIS pane. Store it; pass it to inject/focus.
+#   mux spawn [--from H] [--env K=V]... -- CMD [ARG...]
+#       Open a sibling pane (split from H, default: this pane) running CMD with
+#       the given environment; print the new pane's handle on stdout.
+#   mux inject <handle> -- TEXT
+#       Grab attention on <handle> and submit TEXT as one input line, retrying
+#       the submit (send-keys mid-loop is flaky). Returns without waiting.
+#   mux focus <handle>
+#       Focus / select <handle>.
+#
+# SIDEBAND_MUX may be a bare backend name (resolved under mux-backends/) or an
+# absolute path to a backend file of your own.
+set -uo pipefail
+
+SIDEBAND_MUX="${SIDEBAND_MUX:-tmux}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "$SIDEBAND_MUX" ]; then
+    backend="$SIDEBAND_MUX"
+else
+    backend="$here/mux-backends/$SIDEBAND_MUX"
+fi
+if [ ! -f "$backend" ]; then
+    echo "mux: no backend '$SIDEBAND_MUX' (looked in $here/mux-backends/)" >&2
+    exit 2
+fi
+# shellcheck source=mux-backends/tmux
+. "$backend"
+
+verb="${1:-}"
+shift || true
+
+case "$verb" in
+    self)
+        mux_self
+        ;;
+    spawn)
+        MUX_ENV=()
+        MUX_CMD=()
+        MUX_FROM=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --from)
+                    MUX_FROM="${2:?--from needs a handle}"
+                    shift 2
+                    ;;
+                --env)
+                    MUX_ENV+=("${2:?--env needs K=V}")
+                    shift 2
+                    ;;
+                --)
+                    shift
+                    MUX_CMD=("$@")
+                    break
+                    ;;
+                *)
+                    echo "mux spawn: unexpected arg '$1' (env/cmd after --)" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        if [ ${#MUX_CMD[@]} -eq 0 ]; then
+            echo "mux spawn: missing -- CMD" >&2
+            exit 2
+        fi
+        mux_spawn
+        ;;
+    inject)
+        target="${1:?mux inject: missing <handle>}"
+        shift
+        [ "${1:-}" = "--" ] && shift
+        mux_inject "$target" "$*"
+        ;;
+    focus)
+        mux_focus "${1:?mux focus: missing <handle>}"
+        ;;
+    ""|-h|--help|help)
+        sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        [ "$verb" = "" ] && exit 2 || exit 0
+        ;;
+    *)
+        echo "mux: unknown verb '$verb' (self|spawn|inject|focus)" >&2
+        exit 2
+        ;;
+esac
