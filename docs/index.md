@@ -11,8 +11,11 @@ inbox spools, and transcribes voice notes through a whisper-server.
 ```bash
 tg send "PR #12 opened, CI green"
 answer=$(tg ask "Merge now or wait for review?")
-tg inbox        # instructions the operator sent meanwhile
+tg watch        # stay on the channel: tail the append-only inbox log
 ```
+
+When the operator leaves, an epic owner can `go-mobile` — spawn a
+liaison that keeps the phone channel alive without distracting the work.
 
 ## Why
 
