@@ -4,6 +4,18 @@ All notable changes to `sideband` are documented here.
 
 ## Unreleased
 
+## [0.1.3.0](https://github.com/lambdasistemi/sideband/compare/v0.1.2.0...v0.1.3.0) (2026-07-11)
+
+### Features
+
+* tg next + tg forward — the Telegram liaison primitives (#15) ([f3e38ea](https://github.com/lambdasistemi/sideband/commit/f3e38ea48a3e985eb9417115b8b57d2dbde046fa))
+* **skill:** go-mobile — epic owner spawns its Telegram liaison ([c6a9179](https://github.com/lambdasistemi/sideband/commit/c6a9179eede89694e62735d8aed2f3570c55229e))
+* **skill:** pluggable multiplexer backend for the liaison ([3a7b991](https://github.com/lambdasistemi/sideband/commit/3a7b9914e9d134e2893619920d2ad1130a73502b))
+
+### Bug Fixes
+
+* survive transient network errors instead of crashing (#17) ([2b96f7d](https://github.com/lambdasistemi/sideband/commit/2b96f7d6a6e857357a524f872c3a95c407ed13b7))
+
 ## [0.1.2.0](https://github.com/lambdasistemi/sideband/compare/v0.1.1.0...v0.1.2.0) (2026-07-10)
 
 ### Features
