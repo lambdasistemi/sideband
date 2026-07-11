@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Run BY an epic owner (inside its own tmux pane) to go mobile: spawn a
+# dedicated Telegram liaison in a new pane, then return to work. The liaison
+# owns the window's topic and relays; the epic owner only appends its replies
+# and reports to the channel file.
+#
+# Usage:  go-mobile <window-tag> [liaison-agent-cmd]
+#   <window-tag>        e.g. keri-e21
+#   [liaison-agent-cmd] command prefix taking one prompt arg; default matches
+#                       a Claude epic owner. For Codex use: 'codex exec'
+set -euo pipefail
+
+tag="${1:?usage: go-mobile <window-tag> [liaison-agent-cmd]}"
+agent="${2:-claude --dangerously-skip-permissions -p}"
+
+epic_pane="${TMUX_PANE:?run go-mobile inside the epic owner tmux pane}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+state="$HOME/.local/state/sideband/tags/$tag"
+from_epic="$state/from-epic"
+status_file="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/STATUS.md"
+
+mkdir -p "$state/inbox"
+: >> "$from_epic"
+
+# split a liaison pane below the epic owner and start the loop there.
+# pass config via tmux -e (per-pane env) rather than an inline command string.
+liaison_pane=$(tmux split-window -v -t "$epic_pane" -P -F '#{pane_id}' \
+    -e "TG_TAG=$tag" \
+    -e "EPIC_PANE=$epic_pane" \
+    -e "STATUS_FILE=$status_file" \
+    -e "FROM_EPIC=$from_epic" \
+    -e "LIAISON_AGENT=$agent" \
+    -e "TG_AGENT_ENV=${TG_AGENT_ENV:-/code/voice-agent/.env}" \
+    "$here/liaison")
+tmux select-pane -t "$epic_pane"
+
+cat <<EOF
+Liaison spawned for window '$tag' in pane $liaison_pane.
+  - Your channel file: $from_epic
+  - Append one line there whenever you finish an instruction, hit a milestone,
+    or get blocked — the liaison relays it to Telegram.
+  - The liaison pokes THIS pane only for real instructions.
+You can go back to work now.
+EOF

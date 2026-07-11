@@ -108,12 +108,22 @@ the channel, then returns to its work. Two directions, two mechanisms:
 
 ### Epic owner, on "go mobile"
 
-1. Ensure the channel file exists:
-   `~/.local/state/sideband/tags/<window>/from-epic`.
-2. Habit: whenever you finish an instruction, hit a milestone, or block,
-   append **one line** to `from-epic`. You never call `tg` yourself.
-3. Split a new pane, launch the **same CLI at low effort**, paste the
-   liaison brief below (paths/pane-id filled in), then go back to work.
+Run one command from your own pane — it spawns the liaison and returns:
+
+```bash
+~/.claude/skills/telegram/scripts/go-mobile <window-tag> [liaison-agent-cmd]
+# e.g.  go-mobile keri-e21                      # Claude liaison (default)
+#       go-mobile keri-e21 'codex exec'         # Codex liaison
+```
+
+`go-mobile` creates the channel file, splits a pane below you, and starts
+`scripts/liaison` there (which opens the topic, runs `tg forward`, and loops
+`tg next` handing each message to the agent). Then:
+
+1. Adopt one habit: whenever you finish an instruction, hit a milestone, or
+   block, append **one line** to `~/.local/state/sideband/tags/<window>/from-epic`.
+   You never call `tg` yourself.
+2. Go back to work. The liaison pokes your pane only for real instructions.
 
 ### Liaison brief (the spawned pane)
 
