@@ -26,6 +26,7 @@ module Sideband.Telegram
 -- decode with 'message' set to 'Nothing' and are skipped upstream.
 
 import Control.Applicative ((<|>))
+import Control.Exception (try)
 import Data.Aeson
     ( FromJSON (parseJSON)
     , Value
@@ -41,7 +42,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Network.HTTP.Client
-    ( Manager
+    ( HttpException
+    , Manager
     , Request (responseTimeout)
     , RequestBody (RequestBodyBS)
     , httpLbs
@@ -152,8 +154,20 @@ apiCall Bot{manager, token} method params = do
             urlEncodedBody
                 [(TE.encodeUtf8 k, TE.encodeUtf8 v) | (k, v) <- params]
                 req0{responseTimeout = responseTimeoutMicro 90_000_000}
-    resp <- httpLbs req manager
-    pure $ decodeResult (responseBody resp)
+    resp <- httpTry (httpLbs req manager)
+    pure $ resp >>= decodeResult . responseBody
+
+{- | Run an HTTP action, turning a network exception (connection/response
+timeout, DNS, TLS, reset…) into a @Left@ instead of throwing. Every request
+goes through this so a transient blip degrades to a retryable error — the
+daemon's poll loop and @tg send@ survive it rather than crashing.
+-}
+httpTry :: IO a -> IO (Either String a)
+httpTry act = do
+    r <- try act
+    pure $ case r of
+        Left (e :: HttpException) -> Left ("http error: " <> show e)
+        Right a -> Right a
 
 decodeResult :: (FromJSON a) => BL.ByteString -> Either String a
 decodeResult body = do
@@ -263,8 +277,8 @@ downloadVoice bot@Bot{manager, token} fileId = do
                         <> T.unpack token
                         <> "/"
                         <> T.unpack fp
-            resp <- httpLbs req manager
-            pure $ Right $ responseBody resp
+            resp <- httpTry (httpLbs req manager)
+            pure $ fmap responseBody resp
 
 -- | Create a named topic; returns its thread id.
 createForumTopic :: Bot -> Text -> Text -> IO (Either String Integer)
@@ -306,8 +320,9 @@ transcribe mgr url audio = do
                 RequestBodyBS (BL.toStrict audio)
             ]
             req0{responseTimeout = responseTimeoutMicro 120_000_000}
-    resp <- httpLbs req mgr
+    respE <- httpTry (httpLbs req mgr)
     pure $ do
+        resp <- respE
         envelope <- eitherDecode (responseBody resp)
         t <-
             parseEither
