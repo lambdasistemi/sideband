@@ -2,6 +2,7 @@ module Sideband.Commands
     ( cmdSend
     , cmdAsk
     , cmdInbox
+    , cmdNext
     , cmdWatch
     , cmdOpen
     , cmdClose
@@ -48,6 +49,7 @@ import Sideband.Spool
     , readLogFrom
     , readTopic
     , registerTag
+    , takeOneInbox
     , waitReply
     , writeTopic
     )
@@ -180,6 +182,30 @@ cmdInbox cfg = do
     tag <- tagName
     msgs <- consumeInbox cfg tag
     mapM_ TIO.putStrLn msgs
+
+{- | @tg next@ — block until one message arrives for this tag, print it, and
+exit. This is the receive primitive for a dedicated Telegram liaison agent: it
+loops `msg=$(tg next)` so each incoming message becomes exactly one turn of the
+liaison's reasoning (a real agent turn, not a background tail). It consumes the
+message, so the next call returns the following one, in FIFO order. With
+@--timeout N@ it exits 42 if nothing arrives within N seconds; by default it
+blocks indefinitely.
+-}
+cmdNext :: Config -> Maybe Int -> IO ()
+cmdNext cfg mTimeout = do
+    tag <- tagName
+    registerTag cfg tag
+    go tag (fmap (* 2) mTimeout) -- ticks of 500ms
+  where
+    go tag ticks = do
+        m <- takeOneInbox cfg tag
+        case m of
+            Just msg -> TIO.putStrLn msg
+            Nothing -> case ticks of
+                Just 0 -> exitWith (ExitFailure timeoutExit)
+                _ -> do
+                    threadDelay 500_000
+                    go tag (fmap (subtract 1) ticks)
 
 {- | @tg watch@ — tail this tag's append-only inbox log, printing each new
 message as it is appended. Agent-independent: it is just a @tail -F@ of a

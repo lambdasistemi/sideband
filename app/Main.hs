@@ -14,6 +14,7 @@ import Sideband.Commands
     ( cmdAsk
     , cmdClose
     , cmdInbox
+    , cmdNext
     , cmdOff
     , cmdOn
     , cmdOpen
@@ -34,6 +35,7 @@ data Command
     = Send Bool [Text]
     | Ask Int [Text]
     | Inbox
+    | Next (Maybe Int)
     | Watch
     | Open
     | Close
@@ -98,6 +100,24 @@ parser =
                 "inbox"
                 (info (pure Inbox) (progDesc "Print pending messages"))
             <> command
+                "next"
+                ( info
+                    ( Next
+                        <$> optional
+                            ( option
+                                auto
+                                ( long "timeout"
+                                    <> metavar "SECONDS"
+                                    <> help "exit 42 if no message in N seconds"
+                                )
+                            )
+                    )
+                    ( progDesc
+                        "Block for the next message, print it, and exit \
+                        \(the liaison receive primitive)"
+                    )
+                )
+            <> command
                 "watch"
                 ( info
                     (pure Watch)
@@ -161,6 +181,7 @@ dispatch cfg = \case
     Send md ws -> cmdSend cfg md =<< joined ws
     Ask seconds ws -> cmdAsk cfg seconds =<< joined ws
     Inbox -> cmdInbox cfg
+    Next mt -> cmdNext cfg mt
     Watch -> cmdWatch cfg
     Open -> cmdOpen cfg
     Close -> cmdClose cfg

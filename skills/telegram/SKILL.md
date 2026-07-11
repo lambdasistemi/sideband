@@ -26,7 +26,8 @@ tg send "PR #12 opened, CI green"       # fire-and-forget notification
 tg send --md "*bold*"                   # Markdown, falls back to plain
 tg ask "Merge now or wait?"             # blocks; prints the reply; exit 42 on timeout
 tg ask --timeout 1800 "…"               # default 600s
-tg watch                                 # tail the append-only inbox log (the watcher)
+tg next                                  # block for ONE message, print it, exit (liaison receive)
+tg watch                                 # tail the append-only inbox log (audit stream)
 tg inbox                                 # one-shot: print + consume pending messages
 tg open / tg close                       # create-or-reopen / close this tag's forum topic
 tg on / tg off                           # hook marker + topic lifecycle in one step
