@@ -3,6 +3,7 @@ module Sideband.Spool
     , registerTag
     , deliver
     , consumeInbox
+    , takeOneInbox
     , waitReply
     , logPath
     , appendLog
@@ -141,6 +142,24 @@ consumeInbox cfg tag = do
                     pure t
                 )
                 files
+
+-- | Read and remove only the oldest pending message (FIFO), if any.
+takeOneInbox :: Config -> Text -> IO (Maybe Text)
+takeOneInbox cfg tag = do
+    let dir = inboxDir cfg tag
+    exists <- doesDirectoryExist dir
+    if not exists
+        then pure Nothing
+        else do
+            files <-
+                sort . filter ((== ".msg") . takeExtension)
+                    <$> listDirectory dir
+            case files of
+                [] -> pure Nothing
+                (f : _) -> do
+                    t <- TIO.readFile (dir </> f)
+                    removeFile (dir </> f)
+                    pure (Just t)
 
 {- | Block until a message lands in this tag's inbox or the deadline
 passes; consumes and returns the first message only.
