@@ -3,6 +3,7 @@ module Sideband.Commands
     , cmdAsk
     , cmdInbox
     , cmdNext
+    , cmdForward
     , cmdWatch
     , cmdOpen
     , cmdClose
@@ -25,10 +26,12 @@ module Sideband.Commands
 -- therefore refuses to run while the daemon is up.
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (unless, when)
+import Control.Monad (unless, void, when)
+import Data.ByteString qualified as BS
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Sideband.Config
     ( Config (..)
@@ -206,6 +209,44 @@ cmdNext cfg mTimeout = do
                 _ -> do
                     threadDelay 500_000
                     go tag (fmap (subtract 1) ticks)
+
+{- | @tg forward FILE@ — the upward channel of a Telegram liaison. Tail an
+arbitrary append-only channel file (the epic owner appends its replies and
+reports to it with @echo "…" >> FILE@) and send each complete new line to this
+tag's topic. No pane capturing: the epic owner writes plain lines, this
+forwards them. Line-buffered; a trailing partial line is held until its
+newline arrives.
+-}
+cmdForward :: Config -> FilePath -> IO ()
+cmdForward cfg path = do
+    bot <- newBot (botToken cfg)
+    unlessM (doesFileExist path) $ writeFile path ""
+    start <- logSize path
+    loop bot start
+  where
+    unlessM p act = p >>= \b -> unless b act
+    loop bot off = do
+        size <- logSize path
+        off' <-
+            if size > off
+                then do
+                    chunk <- readLogFrom path off
+                    -- split at the LAST newline: everything before it is
+                    -- complete lines; hold the trailing partial for next read
+                    let (before, after) = T.breakOnEnd "\n" chunk
+                        partialBytes =
+                            fromIntegral (BS.length (TE.encodeUtf8 after))
+                    mapM_
+                        ( \l ->
+                            unless (T.null (T.strip l)) $
+                                void $
+                                    sendTagged cfg bot Nothing l
+                        )
+                        (T.lines before)
+                    pure (size - partialBytes)
+                else pure off
+        threadDelay 1_000_000
+        loop bot off'
 
 {- | @tg watch@ — tail this tag's append-only inbox log, printing each new
 message as it is appended. Agent-independent: it is just a @tail -F@ of a

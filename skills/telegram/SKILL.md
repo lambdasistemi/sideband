@@ -27,6 +27,7 @@ tg send --md "*bold*"                   # Markdown, falls back to plain
 tg ask "Merge now or wait?"             # blocks; prints the reply; exit 42 on timeout
 tg ask --timeout 1800 "…"               # default 600s
 tg next                                  # block for ONE message, print it, exit (liaison receive)
+tg forward FILE                          # tail a channel file, send each line to the topic (liaison upward)
 tg watch                                 # tail the append-only inbox log (audit stream)
 tg inbox                                 # one-shot: print + consume pending messages
 tg open / tg close                       # create-or-reopen / close this tag's forum topic

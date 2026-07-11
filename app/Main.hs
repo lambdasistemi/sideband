@@ -13,6 +13,7 @@ import Options.Applicative
 import Sideband.Commands
     ( cmdAsk
     , cmdClose
+    , cmdForward
     , cmdInbox
     , cmdNext
     , cmdOff
@@ -36,6 +37,7 @@ data Command
     | Ask Int [Text]
     | Inbox
     | Next (Maybe Int)
+    | Forward FilePath
     | Watch
     | Open
     | Close
@@ -118,6 +120,18 @@ parser =
                     )
                 )
             <> command
+                "forward"
+                ( info
+                    ( Forward
+                        <$> strArgument
+                            (metavar "FILE" <> help "channel file to tail")
+                    )
+                    ( progDesc
+                        "Tail a channel file, send each line to this topic \
+                        \(liaison upward relay)"
+                    )
+                )
+            <> command
                 "watch"
                 ( info
                     (pure Watch)
@@ -182,6 +196,7 @@ dispatch cfg = \case
     Ask seconds ws -> cmdAsk cfg seconds =<< joined ws
     Inbox -> cmdInbox cfg
     Next mt -> cmdNext cfg mt
+    Forward f -> cmdForward cfg f
     Watch -> cmdWatch cfg
     Open -> cmdOpen cfg
     Close -> cmdClose cfg
