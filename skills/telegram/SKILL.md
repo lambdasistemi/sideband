@@ -93,14 +93,17 @@ failed channel.
 When the operator, watching an epic owner, says "load telegram / I'm
 leaving", the epic owner does **not** start watching Telegram itself —
 that distracts it and a turn-based agent can't be woken by a file. It
-**spawns a dedicated liaison agent** in a new tmux pane whose only job is
-the channel, then returns to its work. Two directions, two mechanisms:
+**spawns a dedicated liaison agent** in a new multiplexer pane whose only
+job is the channel, then returns to its work. Two directions, two
+mechanisms:
 
-- **Downward (operator → epic owner): `send-keys`, only to grab
+- **Downward (operator → epic owner): a pane-inject, only to grab
   attention.** A file cannot wake a busy/idle agent, so the liaison
-  interrupts the epic owner's pane (`Escape`) and injects the instruction
-  as input. `send-keys` mid-loop is flaky — verify the input line cleared
-  and re-send `Enter` if not.
+  interrupts the epic owner's pane and injects the instruction as input.
+  This is the one place a terminal-multiplexer trick is needed, and it is
+  wrapped in the `mux` adapter (`scripts/mux inject <handle> -- "…"`) so it
+  works under any multiplexer, not just tmux (see **Pluggable multiplexer**
+  below). The adapter handles the flaky-mid-loop re-submit itself.
 - **Upward (epic owner → operator): a plain channel file, no
   screen-scraping.** The epic owner appends one line per reply/report to
   `~/.local/state/sideband/tags/<window>/from-epic`; `tg forward` tails it
@@ -142,18 +145,37 @@ Loop forever — one Telegram message per turn:
     `tg send` the answer. Do NOT disturb the epic owner.
   - Control message for you (stop, are-you-there)? Handle it yourself.
   - Real instruction/decision for the epic owner? Grab attention + inject
-    (never screen-scrape; the reply returns via <from-epic>):
-      tmux send-keys -t <epic-pane> Escape        # interrupt; repeat if busy
-      tmux send-keys -t <epic-pane> -l "[Telegram from Paolo] $msg. When
+    with one command (never screen-scrape; the reply returns via
+    <from-epic>). The `mux` adapter does the interrupt, type, and re-submit:
+      scripts/mux inject <epic-pane> -- "[Telegram from Paolo] $msg. When
         done append ONE line to <from-epic>, then resume your work."
-      tmux send-keys -t <epic-pane> Enter
-      # verify the input line cleared; if not, send Enter again
     Return to `tg next` immediately.
 ```
 
-The epic owner is interrupted only for real instructions, the only tmux
-trick is the attention-grab, and everything it *says* returns through the
-file channel.
+The epic owner is interrupted only for real instructions, the only
+multiplexer trick is the attention-grab, and everything it *says* returns
+through the file channel.
+
+### Pluggable multiplexer
+
+The liaison needs exactly two multiplexer operations — spawn a sibling
+pane (`go-mobile`) and inject a submitted line into the epic owner's pane
+(the liaison). Both go through `scripts/mux`, so nothing hard-wires tmux:
+
+```bash
+mux self                                   # handle for this pane
+mux spawn [--from H] [--env K=V]... -- CMD # sibling pane, prints its handle
+mux inject <handle> -- "text"              # attention-grab + submit, with retry
+mux focus <handle>
+```
+
+The backend is chosen by `SIDEBAND_MUX` (default `tmux`) and resolved from
+`scripts/mux-backends/<name>` — or an absolute path to your own file. To run
+under zellij, screen, wezterm, or anything else, copy
+`scripts/mux-backends/EXAMPLE` to `scripts/mux-backends/<yourmux>`, implement
+the four functions (`mux_self`, `mux_spawn`, `mux_inject`, `mux_focus`), and
+`export SIDEBAND_MUX=<yourmux>` before running `go-mobile`. The choice
+propagates to the liaison pane automatically.
 
 ## Setup (one-time, operator)
 

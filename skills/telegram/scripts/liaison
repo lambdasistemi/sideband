@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Telegram liaison loop for one tmux window. Runs in its own pane, spawned by
-# the epic owner via `go-mobile`. Deterministic loop (never stops); a
-# low-effort agent handles each individual message.
+# Telegram liaison loop for one multiplexer window. Runs in its own pane,
+# spawned by the epic owner via `go-mobile`. Deterministic loop (never stops);
+# a low-effort agent handles each individual message.
 #
 # Env (set by go-mobile):
 #   TG_TAG        window tag / topic name
-#   EPIC_PANE     tmux pane id of the epic owner
+#   EPIC_PANE     multiplexer handle for the epic owner's pane
 #   STATUS_FILE   the epic owner's status file (may not exist yet)
 #   FROM_EPIC     upward channel file (epic appends replies; we forward it)
 #   LIAISON_AGENT command prefix that takes a single prompt arg, e.g.
 #                 'claude --dangerously-skip-permissions -p' or 'codex exec'
 #   TG_AGENT_ENV  sideband env file (default /code/voice-agent/.env)
+#   SIDEBAND_MUX  multiplexer backend for attention-grabs (default tmux)
 set -uo pipefail
 export TG_AGENT_ENV="${TG_AGENT_ENV:-/code/voice-agent/.env}"
+export SIDEBAND_MUX="${SIDEBAND_MUX:-tmux}"
 
 : "${TG_TAG:?}" "${EPIC_PANE:?}" "${FROM_EPIC:?}"
 STATUS_FILE="${STATUS_FILE:-}"
 LIAISON_AGENT="${LIAISON_AGENT:-claude --dangerously-skip-permissions -p}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mux="$here/mux"
 
 mkdir -p "$(dirname "$FROM_EPIC")"; : >> "$FROM_EPIC"
 
@@ -29,13 +33,13 @@ echo "[liaison $TG_TAG: forwarding + waiting on tg next]"
 prompt_for() {
     local msg="$1"
     cat <<EOF
-You are the Telegram liaison for tmux window "$TG_TAG". A message just arrived
+You are the Telegram liaison for window "$TG_TAG". A message just arrived
 from the operator on Telegram:
 
   "$msg"
 
 Context you may use with the shell:
-- The epic owner runs in tmux pane $EPIC_PANE.
+- The epic owner runs in pane $EPIC_PANE.
 - Its status file: ${STATUS_FILE:-<none>}.
 - Its upward channel file: $FROM_EPIC.
 - To speak to the operator yourself, run: tg send "…"
@@ -45,15 +49,10 @@ Do EXACTLY ONE of these, then stop:
    (or general chit-chat), answer it yourself: read the status file if useful
    and run  tg send "<your short answer>".  Do NOT disturb the epic owner.
 2. If it is an instruction, decision, or correction for the epic owner, grab
-   its attention and inject it (do NOT screen-scrape; its reply returns via
-   the channel file automatically):
-     tmux send-keys -t $EPIC_PANE Escape
-     sleep 0.4
-     tmux send-keys -t $EPIC_PANE -l -- "[Telegram from operator] $msg. When done, append ONE line to $FROM_EPIC, then resume your previous work."
-     sleep 0.4
-     tmux send-keys -t $EPIC_PANE Enter
-   Then capture the pane; if the text is still sitting unsent at the prompt,
-   send another Enter. Do not wait for the reply.
+   its attention and inject it with the one command below (do NOT screen-scrape
+   and do NOT wait for a reply — the reply returns via the channel file
+   automatically). The command handles the interrupt, typing, and re-submit:
+     $mux inject $EPIC_PANE -- "[Telegram from operator] $msg. When done, append ONE line to $FROM_EPIC, then resume your previous work."
 Keep it to those shell actions; produce no other output.
 EOF
 }

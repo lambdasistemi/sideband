@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Run BY an epic owner (inside its own tmux pane) to go mobile: spawn a
+# Run BY an epic owner (inside its own multiplexer pane) to go mobile: spawn a
 # dedicated Telegram liaison in a new pane, then return to work. The liaison
 # owns the window's topic and relays; the epic owner only appends its replies
 # and reports to the channel file.
+#
+# The multiplexer is pluggable (see scripts/mux): set SIDEBAND_MUX=<backend>
+# to run under something other than tmux. Defaults to tmux.
 #
 # Usage:  go-mobile <window-tag> [liaison-agent-cmd]
 #   <window-tag>        e.g. keri-e21
@@ -13,8 +16,13 @@ set -euo pipefail
 tag="${1:?usage: go-mobile <window-tag> [liaison-agent-cmd]}"
 agent="${2:-claude --dangerously-skip-permissions -p}"
 
-epic_pane="${TMUX_PANE:?run go-mobile inside the epic owner tmux pane}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mux="$here/mux"
+export SIDEBAND_MUX="${SIDEBAND_MUX:-tmux}"
+
+epic_pane="$("$mux" self)" \
+    || { echo "run go-mobile inside your $SIDEBAND_MUX pane" >&2; exit 1; }
+
 state="$HOME/.local/state/sideband/tags/$tag"
 from_epic="$state/from-epic"
 status_file="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/STATUS.md"
@@ -22,17 +30,18 @@ status_file="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/STATUS.md"
 mkdir -p "$state/inbox"
 : >> "$from_epic"
 
-# split a liaison pane below the epic owner and start the loop there.
-# pass config via tmux -e (per-pane env) rather than an inline command string.
-liaison_pane=$(tmux split-window -v -t "$epic_pane" -P -F '#{pane_id}' \
-    -e "TG_TAG=$tag" \
-    -e "EPIC_PANE=$epic_pane" \
-    -e "STATUS_FILE=$status_file" \
-    -e "FROM_EPIC=$from_epic" \
-    -e "LIAISON_AGENT=$agent" \
-    -e "TG_AGENT_ENV=${TG_AGENT_ENV:-/code/voice-agent/.env}" \
-    "$here/liaison")
-tmux select-pane -t "$epic_pane"
+# Spawn a liaison pane next to the epic owner and start the loop there.
+# Config (including which multiplexer backend to use) travels as pane env.
+liaison_pane=$("$mux" spawn --from "$epic_pane" \
+    --env "TG_TAG=$tag" \
+    --env "EPIC_PANE=$epic_pane" \
+    --env "STATUS_FILE=$status_file" \
+    --env "FROM_EPIC=$from_epic" \
+    --env "LIAISON_AGENT=$agent" \
+    --env "TG_AGENT_ENV=${TG_AGENT_ENV:-/code/voice-agent/.env}" \
+    --env "SIDEBAND_MUX=$SIDEBAND_MUX" \
+    -- "$here/liaison")
+"$mux" focus "$epic_pane"
 
 cat <<EOF
 Liaison spawned for window '$tag' in pane $liaison_pane.
