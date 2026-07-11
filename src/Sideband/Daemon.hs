@@ -19,6 +19,7 @@ module Sideband.Daemon
 -- detached instance for machines without a service manager.
 
 import Control.Concurrent (threadDelay)
+import Control.Exception (SomeException, try)
 import Control.Monad (forM_, void, when)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -103,17 +104,28 @@ daemonRun cfg = do
     loop bot chat offset0
   where
     loop bot chat offset = do
+        -- safety net: no single iteration may kill the poll loop. HTTP errors
+        -- already come back as Left; this catches anything else (a bad decode,
+        -- a transient IO error) so the daemon retries instead of exiting.
+        outcome <- try (step bot chat offset)
+        case outcome of
+            Right offset' -> loop bot chat offset'
+            Left (e :: SomeException) -> do
+                putStrLn $ "daemon iteration error: " <> show e
+                threadDelay 5_000_000
+                loop bot chat offset
+    step bot chat offset = do
         r <- getUpdates bot 50 offset
         case r of
             Left err -> do
                 putStrLn $ "getUpdates error: " <> err
                 threadDelay 10_000_000
-                loop bot chat offset
+                pure offset
             Right updates -> do
                 offset' <- processBatch cfg bot chat updates offset
                 when (offset' /= offset) $
                     forM_ offset' (writeOffset cfg)
-                loop bot chat offset'
+                pure offset'
 
 processBatch
     :: Config
