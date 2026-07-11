@@ -88,6 +88,63 @@ that agent, write in General to reach everyone, send voice notes
 freely (the hub transcribes them). A channel that needs a manual is a
 failed channel.
 
+## Liaison mode (an epic owner "goes mobile")
+
+When the operator, watching an epic owner, says "load telegram / I'm
+leaving", the epic owner does **not** start watching Telegram itself —
+that distracts it and a turn-based agent can't be woken by a file. It
+**spawns a dedicated liaison agent** in a new tmux pane whose only job is
+the channel, then returns to its work. Two directions, two mechanisms:
+
+- **Downward (operator → epic owner): `send-keys`, only to grab
+  attention.** A file cannot wake a busy/idle agent, so the liaison
+  interrupts the epic owner's pane (`Escape`) and injects the instruction
+  as input. `send-keys` mid-loop is flaky — verify the input line cleared
+  and re-send `Enter` if not.
+- **Upward (epic owner → operator): a plain channel file, no
+  screen-scraping.** The epic owner appends one line per reply/report to
+  `~/.local/state/sideband/tags/<window>/from-epic`; `tg forward` tails it
+  and sends each line to the topic.
+
+### Epic owner, on "go mobile"
+
+1. Ensure the channel file exists:
+   `~/.local/state/sideband/tags/<window>/from-epic`.
+2. Habit: whenever you finish an instruction, hit a milestone, or block,
+   append **one line** to `from-epic`. You never call `tg` yourself.
+3. Split a new pane, launch the **same CLI at low effort**, paste the
+   liaison brief below (paths/pane-id filled in), then go back to work.
+
+### Liaison brief (the spawned pane)
+
+```
+You are the Telegram liaison for window <window> (tag <window>). Epic
+owner pane: <epic-pane>. Status file: <STATUS.md>. Channel: <from-epic>.
+
+Setup once:
+  export TG_TAG=<window>; tg on
+  tg send "liaison online for <window>"
+  tg forward <from-epic> &          # relay the epic owner's lines up
+
+Loop forever — one Telegram message per turn:
+  msg=$(tg next)
+  - Status/progress question answerable from <STATUS.md>? Read it and
+    `tg send` the answer. Do NOT disturb the epic owner.
+  - Control message for you (stop, are-you-there)? Handle it yourself.
+  - Real instruction/decision for the epic owner? Grab attention + inject
+    (never screen-scrape; the reply returns via <from-epic>):
+      tmux send-keys -t <epic-pane> Escape        # interrupt; repeat if busy
+      tmux send-keys -t <epic-pane> -l "[Telegram from Paolo] $msg. When
+        done append ONE line to <from-epic>, then resume your work."
+      tmux send-keys -t <epic-pane> Enter
+      # verify the input line cleared; if not, send Enter again
+    Return to `tg next` immediately.
+```
+
+The epic owner is interrupted only for real instructions, the only tmux
+trick is the attention-grab, and everything it *says* returns through the
+file channel.
+
 ## Setup (one-time, operator)
 
 1. Create a bot with @BotFather; put the token in the env file
