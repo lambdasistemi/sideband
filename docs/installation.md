@@ -73,6 +73,45 @@ Or run it as a managed service.
     }
     ```
 
+## The agent skill
+
+The `tg` binary is the transport; the **skill** is the protocol an agent
+follows on the channel — when to `send`, `ask`, and `watch`, the topic
+lifecycle, and how to go mobile with a liaison. It ships in this repo
+under `skills/telegram/` and follows the
+[agentskills.io](https://agentskills.io) convention, so any compatible
+agent picks it up once it is on that agent's skills path.
+
+Install it by placing the **whole** `skills/telegram/` directory — its
+`SKILL.md` **and** its `scripts/` — where your agent discovers skills:
+
+=== "Claude Code"
+
+    ```bash
+    mkdir -p ~/.claude/skills
+    # symlink the checkout so it tracks updates:
+    ln -s "$PWD/skills/telegram" ~/.claude/skills/telegram
+    # …or copy a snapshot instead:
+    # cp -a skills/telegram ~/.claude/skills/telegram
+    ```
+
+=== "Codex / Gemini / other"
+
+    Point the agent at this repo's `skills/` directory, or copy
+    `skills/telegram/` into the skills path your agent scans. Any client
+    that follows the agentskills.io convention discovers it. See
+    [AGENTS.md](https://github.com/lambdasistemi/sideband/blob/main/AGENTS.md).
+
+Install the **directory**, not just `SKILL.md`: the liaison helpers
+(`go-mobile`, `mux`, `mux-selftest`, and the multiplexer backends) live in
+`skills/telegram/scripts/` and must sit beside it. Verify they came
+across by running the multiplexer conformance test from inside tmux —
+it should report `5 passed, 0 failed`:
+
+```bash
+~/.claude/skills/telegram/scripts/mux-selftest
+```
+
 ## Configuration
 
 An env file (default `~/.config/sideband/env`, override with

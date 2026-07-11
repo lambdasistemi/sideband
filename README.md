@@ -74,10 +74,18 @@ override).
 
 ## Agents
 
-This repo ships its own agent skill: see
-[AGENTS.md](AGENTS.md) and `skills/telegram/SKILL.md` for the
-protocol coding agents follow on the channel (any agent supporting
-the [agentskills.io](https://agentskills.io) convention picks it up).
+This repo ships its own agent skill under `skills/telegram/`
+(`SKILL.md` + the liaison helper scripts). Install it by placing that
+**whole directory** where your agent discovers skills — for Claude Code:
+
+```bash
+ln -s "$PWD/skills/telegram" ~/.claude/skills/telegram
+```
+
+Any agent supporting the [agentskills.io](https://agentskills.io)
+convention then picks it up. See [AGENTS.md](AGENTS.md) and
+[docs/installation.md](docs/installation.md#the-agent-skill) for the
+full protocol and setup.
 
 ## Development
 

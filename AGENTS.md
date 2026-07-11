@@ -12,14 +12,20 @@ replies (text or transcribed voice notes) to per-agent inboxes.
 - Enter the dev shell: `nix develop`
 - Build: `just build` — Test: `just unit` — Everything CI runs: `just CI`
 - Style: fourmolu (see `fourmolu.yaml`), `just format`
-- Haskell, GHC 9.8.4 via haskell.nix; warnings are errors
+- Haskell, GHC 9.12.3 via haskell.nix; warnings are errors
 
 ## Skills
 
 Activatable procedures live under `skills/`:
 
 - `skills/telegram/` — how an agent uses the `tg` channel during
-  unattended work (send/ask/inbox protocol, topic lifecycle, setup).
+  unattended work (send/ask/watch protocol, topic lifecycle, the
+  go-mobile liaison, setup).
+
+To use the skill on a machine, install the whole `skills/telegram/`
+directory (its `SKILL.md` and `scripts/`) onto your agent's skills path
+— e.g. `ln -s "$PWD/skills/telegram" ~/.claude/skills/telegram`. See
+[docs/installation.md](docs/installation.md#the-agent-skill).
 
 ## First-run setup
 
