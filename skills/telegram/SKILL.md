@@ -177,6 +177,18 @@ the four functions (`mux_self`, `mux_spawn`, `mux_inject`, `mux_focus`), and
 `export SIDEBAND_MUX=<yourmux>` before running `go-mobile`. The choice
 propagates to the liaison pane automatically.
 
+The full contract — inputs, outputs, handle semantics, and the inject
+attention-grab/re-submit rules — is in **`scripts/mux-backends/README.md`**.
+Verify a new backend by running the conformance harness inside that
+multiplexer:
+
+```bash
+SIDEBAND_MUX=<yourmux> scripts/mux-selftest   # self / spawn+env / inject / focus
+```
+
+It checks all four verbs via temp files (no per-multiplexer capture needed);
+all must pass before the liaison works reliably.
+
 ## Setup (one-time, operator)
 
 1. Create a bot with @BotFather; put the token in the env file

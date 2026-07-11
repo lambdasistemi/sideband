@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Conformance test for a `mux` backend. Run it INSIDE the multiplexer you are
+# implementing; it drives all four verbs through your backend and checks the
+# observable results via temp files, so it needs no multiplexer-specific
+# capture primitive and works for any backend.
+#
+# Usage (from inside your multiplexer):
+#   SIDEBAND_MUX=<yourmux> mux-selftest
+#   mux-selftest <yourmux>            # same thing, name as an argument
+#
+# Exits 0 only if self / spawn+env / inject / focus all pass. It opens a few
+# short-lived panes that close themselves after a few seconds.
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mux="$here/mux"
+export SIDEBAND_MUX="${1:-${SIDEBAND_MUX:-tmux}}"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+pass=0
+fail=0
+ok() { echo "  PASS: $1"; pass=$((pass + 1)); }
+no() { echo "  FAIL: $1"; fail=$((fail + 1)); }
+
+# Poll up to ~6s for FILE to exist and contain SENTINEL (empty SENTINEL = any
+# non-empty content).
+waitfor() {
+    local file="$1" sentinel="$2" _
+    for _ in $(seq 1 30); do
+        if [ -s "$file" ]; then
+            [ -z "$sentinel" ] && return 0
+            grep -qF -- "$sentinel" "$file" && return 0
+        fi
+        sleep 0.2
+    done
+    return 1
+}
+
+echo "== mux-selftest: backend '$SIDEBAND_MUX' =="
+
+# 1) self — a pane that writes its own handle to a file.
+"$mux" spawn -- sh -c "'$mux' self > '$tmp/self' 2>&1; sleep 3" >/dev/null 2>&1 || true
+if waitfor "$tmp/self" ""; then
+    ok "self prints a handle: $(tr -d '\n' < "$tmp/self")"
+else
+    no "self printed nothing (is it run inside the multiplexer?)"
+fi
+sleep 3 # let that pane close before opening the next
+
+# 2) spawn + env — command runs, MUX_ENV applied, handle returned on stdout.
+h_env=$("$mux" spawn --env "MUX_SELFTEST=SENTINEL_ENV" \
+    -- sh -c "echo GOT=\$MUX_SELFTEST > '$tmp/env'; sleep 3" 2>/dev/null)
+if waitfor "$tmp/env" "GOT=SENTINEL_ENV"; then
+    ok "spawn runs the command with --env applied"
+else
+    no "spawn/env: expected GOT=SENTINEL_ENV in the new pane"
+fi
+if [ -n "$h_env" ]; then
+    ok "spawn returned a handle on stdout: $h_env"
+else
+    no "spawn returned no handle on stdout"
+fi
+sleep 3
+
+# 3) inject — text reaches the target pane's foreground program. The sink runs
+# `cat`, which writes whatever is typed into it to a file.
+sink=$("$mux" spawn -- sh -c "cat >> '$tmp/inject'; sleep 1" 2>/dev/null)
+sleep 1
+if [ -n "$sink" ]; then
+    "$mux" inject "$sink" -- "SENTINEL_INJECT"
+    if waitfor "$tmp/inject" "SENTINEL_INJECT"; then
+        ok "inject delivered a submitted line"
+    else
+        no "inject: the line never reached the pane"
+    fi
+    # 4) focus — must exit 0 for a live handle.
+    if "$mux" focus "$sink"; then
+        ok "focus exits 0"
+    else
+        no "focus failed for a valid handle"
+    fi
+else
+    no "cannot test inject/focus: spawn returned no handle for the sink"
+fi
+
+echo "== $pass passed, $fail failed =="
+[ "$fail" -eq 0 ]
